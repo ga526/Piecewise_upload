@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <title>断点分片上传实例</title>
+	<script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script>
+
+    <script>
+    var page = {
+			shardSize : 2 * 1024 * 1024,     //以2MB为一个分片
+			succeed : 0,//成功分片数
+			iscomplete : 0,//是否上传完成
+			uploadIndex:0,//当前分片起始位置
+			isopen	: false,//是否在上传中
+			_upload:function(file,name,size,shardCount,i){
+			 //计算每一片的起始与结束位置
+					var start = i * this.shardSize,
+						_this = this,
+						end = Math.min(size, start + this.shardSize);
+	 
+					//构造一个表单，FormData是HTML5新增的
+					var form = new FormData();
+					form.append("data", file.slice(start,end));  //slice方法用于切出文件的一部分
+					form.append("fileName", name);
+					form.append("totalSize", size);
+					form.append("chunkSize", this.shardSize);
+					form.append("totalChunk", shardCount);   //总片数
+					form.append("index", i + 1);        //当前是第几片
+					 
+					//Ajax提交
+					$.ajax({
+						url: "uploader.php",
+						type: "POST",
+						data: form,
+						dataType:"json",
+						async: true,         //异步
+						processData: false,  //很重要，告诉jquery不要对form进行处理
+						contentType: false,  //很重要，指定为false才能形成正确的Content-Type
+						success: function(data){
+							if(data.code == 1){
+								_this.succeed = shardCount;
+								_this.iscomplete = 1;
+								$("#upload").text("上传完成");
+							}else if(data.code == 200){
+								_this.succeed = _this.succeed + 1;
+							}else if(data.code == 400){
+								_this._upload(file,name,size,shardCount,i);
+							}
+							$("#output").text(_this.succeed + " / " + shardCount);
+						}
+					});
+			},
+			upload: function(){
+				var file = $("#file")[0].files[0],  //文件对象
+					name = file.name,        //文件名
+					size = file.size,        //总大小
+					_this = this,
+					shardCount = Math.ceil(size / this.shardSize),   //总片数
+					settime = setInterval(function(){
+						if(!(_this.isopen) || _this.succeed == shardCount || _this.uploadIndex >= shardCount){
+							clearInterval(settime);
+							return;
+						}
+						_this._upload(file,name,size,shardCount,_this.uploadIndex);
+						_this.uploadIndex = _this.uploadIndex + 1;
+					
+					},100);
+			}
+    };
+    $(function(){
+		$("#file").change(function(){
+			page.isopen = false;
+			$(this).text("等待");
+			page.succeed = 0;//成功分片数
+			page.iscomplete = 0;//是否上传完成
+			page.uploadIndex = 0;//当前分片起始位置
+		});
+		
+		$("#upload").click(function(){
+			if( !page.iscomplete ){
+				if(page.isopen){
+					page.isopen = false;
+					$(this).text("暂停中");
+				}else{
+					page.isopen = true;
+					page.upload();
+					$(this).text("上传中");
+				}
+			}else{
+				page.isopen = false;
+				$(this).text("上传完成");
+			}
+		});
+    });
+    </script>
+</head>
+<body>
+    <input type="file" id="file" />
+    <button id="upload" class="on">上传</button>
+    <span id="output" style="font-size:12px">等待</span>
+</body>
+</html>
