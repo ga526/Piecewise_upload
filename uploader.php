@@ -59,7 +59,7 @@ class uploader{
     private function checkChunk(){
         if($_REQUEST["totalChunk"] == $_REQUEST["index"]){
             //如果是最后一片
-            $mode = $_REQUEST["totalSize"] % $_REQUEST["chunkSize"];
+            $mode = $_REQUEST["chunkSize"] == 0 ? 0 : $_REQUEST["totalSize"] % $_REQUEST["chunkSize"];
             if($mode == $_FILES["data"]["size"] || $mode == 0){
                 return true;
             }else{
