@@ -18,10 +18,15 @@ class uploader{
         }
         $this ->redis ->set($totalKey,0);//上传状态
         //将文件保存到临时文件夹下
-        $totalList = $_REQUEST["fileName"].":".$_REQUEST["totalSize"].":list";
-        $totalChunkKey = $_REQUEST["fileName"].":".$_REQUEST["totalSize"].":".$_REQUEST["totalChunk"];
+        $totalListKey = $_REQUEST["fileName"].":".$_REQUEST["totalSize"].":list:";
         //待清除redis 列表
-        $this ->redis ->sadd($totalList,$totalChunkKey);
+        //2.判断当前分片是否已上传
+        $res = $this ->hasUploadedChunk($totalListKey,$_REQUEST['index']);
+        if(!$res){
+            //data 分片号
+            exit(json_encode(["code" =>1,"msg" =>"文件已经上传过"]));
+        }
+        
         //2.判断分片是否正确(大小)
         $res = $this ->checkChunk();
         if(!$res){
@@ -30,19 +35,24 @@ class uploader{
         }
 
         //3.存储分片
-        $res = $this ->saveChunk($totalChunkKey);
+        $res = $this ->saveChunk($totalListKey);
         if($res["code"] != 1) {
             exit(json_encode($res));
         }
         //4.重组文件
-        $data = $this ->reMakeFile($totalChunkKey);
+        $data = $this ->reMakeFile($totalListKey);
         //5.移除redis数据
-        $this ->clearRedis($totalKey,$totalList);
+        $this ->clearRedis($totalKey,$totalListKey);
         if($data["data"] == $_REQUEST["fileMD5"]){
             exit(json_encode(["code" =>1,"msg" =>"上传完成"]));
         }else{
             exit(json_encode(["code" =>1,"msg" =>"md5 不匹配，php md5：{$data["data"]}, js md5 {$_REQUEST["fileMD5"]}","file" =>$data["file"]]));
         }
+    }
+    
+    //判断分片是否寂静上传过
+    private function hasUploadedChunk($totalListKey){
+        return !$this ->redis ->sIsMember($totalListKey,$_REQUEST["index"]);
     }
 
     //判断分片大小是否等于当前文件大小
@@ -65,8 +75,8 @@ class uploader{
     }
 
     //存储分片
-    private function saveChunk($totalChunkKey){
-        $descName = implode("_",explode(":",$totalChunkKey));
+    private function saveChunk($totalListKey){
+        $descName = implode("_",explode(":",$totalListKey));
         !is_dir($this ->uploaderDir) && mkdir($this ->uploaderDir,777,true);
         $res = move_uploaded_file($_FILES['data']['tmp_name'],$this ->uploaderDir."/".$descName."_".$_REQUEST["index"]);
         if(!$res) return [
@@ -74,23 +84,23 @@ class uploader{
             "msg"   =>"文件移动失败",
             "data" =>$_REQUEST["index"]
         ];
-        $this ->redis ->sadd($totalChunkKey,$_REQUEST["index"]);
+        $this ->redis ->sadd($totalListKey,$_REQUEST["index"]);
         return [
             "code" =>1
         ];
     }
 
     //重组文件
-    private function reMakeFile($totalChunkKey){
-        $len = $this ->redis ->scard($totalChunkKey);
+    private function reMakeFile($totalListKey){
+        $len = $this ->redis ->scard($totalListKey);
         if($len != $_REQUEST["totalChunk"]){
             exit(json_encode(["code" =>200,"msg" =>"index ".$_REQUEST["index"]." len $len, totalChunk {$_REQUEST["totalChunk"]} 分片上传完成"] ));
         }
         try {
             $source = fopen($this->uploaderDir."/".$_REQUEST["fileName"], "w+b");
             for ($i = 0; $i < $len; $i++) {
-                $totalChunkKey = implode("_", explode(":", $totalChunkKey));
-                $openFileName = $this ->uploaderDir."/".$totalChunkKey . "_" . ($i + 1);
+                $totalListKey = implode("_", explode(":", $totalListKey));
+                $openFileName = $this ->uploaderDir."/".$totalListKey . "_" . ($i + 1);
                 $readsource = fopen($openFileName, "r+b");
                 while ($content = fread($readsource, 1024)) {
                     fwrite($source, $content);
@@ -110,10 +120,10 @@ class uploader{
         $list = $this ->redis ->sMembers($totalList);
         if($list){
             foreach ($list as $v){
-                $this ->redis ->delete($v);
+                $this ->redis ->del($v);
             }
         }
-        $this ->redis ->delete($totalList);
+        $this ->redis ->del($totalList);
     }
 }
 
