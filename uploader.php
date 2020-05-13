@@ -19,7 +19,7 @@ class uploader{
         }
         $this ->redis ->set($totalKey,0);//上传状态
         //将文件保存到临时文件夹下
-        $totalListKey = $_REQUEST["fileName"].":".$_REQUEST["totalSize"].":list:";
+        $totalListKey = $_REQUEST["fileMD5"].":list:";
         //待清除redis 列表
         //2.判断当前分片是否已上传
         $res = $this ->hasUploadedChunk($totalListKey,$_REQUEST['index']);
