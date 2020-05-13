@@ -7,6 +7,7 @@ class uploader{
         $this ->redis = new Redis();
         $this ->redis ->connect("192.168.10.130",'12342');
         $this ->redis ->auth('2ws#$%RFE');
+        $this ->redis ->select(9);
     }
 
     //code 1 全部上传完成   200 分片上传完成  400 分片需要重新上传
@@ -98,6 +99,10 @@ class uploader{
         }
         try {
             $source = fopen($this->uploaderDir."/".$_REQUEST["fileName"], "w+b");
+            if(!flock($source,LOCK_EX)){
+                exit(json_encode(["code" =>0,"msg" =>"上传文件被占用 !"] ));
+            }
+
             for ($i = 0; $i < $len; $i++) {
                 $totalListKey = implode("_", explode(":", $totalListKey));
                 $openFileName = $this ->uploaderDir."/".$totalListKey . "_" . ($i + 1);
