@@ -5,7 +5,8 @@ class uploader{
     private $redis;
     public function __construct(){
         $this ->redis = new Redis();
-        $this ->redis ->connect("127.0.0.1");
+        $this ->redis ->connect("192.168.10.130",'12342');
+        $this ->redis ->auth('2ws#$%RFE');
     }
 
     //code 1 全部上传完成   200 分片上传完成  400 分片需要重新上传
@@ -34,10 +35,14 @@ class uploader{
             exit(json_encode($res));
         }
         //4.重组文件
-        $this ->reMakeFile($totalChunkKey);
+        $data = $this ->reMakeFile($totalChunkKey);
         //5.移除redis数据
         $this ->clearRedis($totalKey,$totalList);
-        exit(json_encode(["code" =>1,"msg" =>"上传完成"]));
+        if($data["data"] == $_REQUEST["fileMD5"]){
+            exit(json_encode(["code" =>1,"msg" =>"上传完成"]));
+        }else{
+            exit(json_encode(["code" =>1,"msg" =>"md5 不匹配，php md5：{$data["data"]}, js md5 {$_REQUEST["fileMD5"]}","file" =>$data["file"]]));
+        }
     }
 
     //判断分片大小是否等于当前文件大小
@@ -97,7 +102,7 @@ class uploader{
         }catch (Exception $e){
             exit($e ->getMessage());
         }
-        return ["code" =>1];
+        return ["code" =>1,"data" =>md5_file($this->uploaderDir."/".$_REQUEST["fileName"]),"file" =>$this->uploaderDir."/".$_REQUEST["fileName"]];
     }
 
     private function clearRedis($totalKey,$totalList){

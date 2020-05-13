@@ -3,15 +3,18 @@
 <head>
     <meta charset="utf-8">
     <title>断点分片上传实例</title>
-	<script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.min.js"></script>
+	<script src="./jquery-3.3.1.min.js"></script>
+	<script src="./js-spark-md5.js"></script>
 
     <script>
+        var spark = new SparkMD5()
     var page = {
 			shardSize : 2 * 1024 * 1024,     //以2MB为一个分片
 			succeed : 0,//成功分片数
 			iscomplete : 0,//是否上传完成
 			uploadIndex:0,//当前分片起始位置
 			isopen	: false,//是否在上传中
+            fileMD5 : '',
 			_upload:function(file,name,size,shardCount,i){
 			 //计算每一片的起始与结束位置
 					var start = i * this.shardSize,
@@ -24,6 +27,7 @@
 					form.append("fileName", name);
 					form.append("totalSize", size);
 					form.append("chunkSize", this.shardSize);
+					form.append("fileMD5", this.fileMD5);
 					form.append("totalChunk", shardCount);   //总片数
 					form.append("index", i + 1);        //当前是第几片
 					 
@@ -67,13 +71,52 @@
 					},100);
 			}
     };
+
     $(function(){
 		$("#file").change(function(){
 			page.isopen = false;
-			$(this).text("等待");
+			$("#output").text("等待");
+			$("#upload").text("上传");
 			page.succeed = 0;//成功分片数
 			page.iscomplete = 0;//是否上传完成
 			page.uploadIndex = 0;//当前分片起始位置
+
+            /* ------------------ complete file md5 start ---------------------- */
+            var blobSlice = File.prototype.slice || File.prototype.mozSlice || File.prototype.webkitSlice,
+                file = this.files[0],
+                chunkSize = page.shardSize,                             // Read in chunks of 2MB
+                chunks = Math.ceil(file.size / chunkSize),
+                currentChunk = 0,
+                spark = new SparkMD5.ArrayBuffer(),
+                fileReader = new FileReader();
+
+            fileReader.onload = function (e) {
+                console.log('read chunk nr', currentChunk + 1, 'of', chunks);
+                spark.append(e.target.result);                   // Append array buffer
+                currentChunk++;
+
+                if (currentChunk < chunks) {
+                    loadNext();
+                } else {
+                    console.log('finished loading');
+                    page.fileMD5 = spark.end()  // Compute hash
+                    console.log("file hash is " +page.fileMD5)
+                }
+            };
+            fileReader.onerror = function () {
+                console.warn('oops, something went wrong.');
+            };
+
+            function loadNext() {
+                var start = currentChunk * chunkSize,
+                    end = ((start + chunkSize) >= file.size) ? file.size : start + chunkSize;
+
+                fileReader.readAsArrayBuffer(blobSlice.call(file, start, end));
+            }
+
+            loadNext();
+
+            /* ------------------ complete file md5 end ---------------------- */
 		});
 		
 		$("#upload").click(function(){
