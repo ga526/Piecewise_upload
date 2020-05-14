@@ -49,7 +49,7 @@
                                 }else if(data.code == 400){
                                     _this._upload(file,name,size,shardCount,i);
                                 }
-                                $("#output").text(_this.succeed + " / " + shardCount);
+                                $("#output").text(((_this.succeed +1)*100 /(shardCount+1)).toFixed(2)+"%");
                             }
                         });
                 },
@@ -58,16 +58,51 @@
                         name = file.name,        //文件名
                         size = file.size,        //总大小
                         _this = this,
+                        blobSlice = File.prototype.slice || File.prototype.mozSlice || File.prototype.webkitSlice,
                         shardCount = Math.ceil(size / this.shardSize),   //总片数
-                        settime = setInterval(function(){
-                            if(!(_this.isopen) || _this.succeed == shardCount || _this.uploadIndex >= shardCount){
-                                clearInterval(settime);
-                                return;
-                            }
-                            _this._upload(file,name,size,shardCount,_this.uploadIndex);
-                            _this.uploadIndex = _this.uploadIndex + 1;
+                        currentChunk = 0,
+                        spark = new SparkMD5.ArrayBuffer(),
+                        fileReader = new FileReader();
 
-                        },100);
+                    fileReader.onload = function (e) {
+                        console.log('read chunk nr', currentChunk + 1, 'of', shardCount);
+                        spark.append(e.target.result);                   // Append array buffer
+                        currentChunk++;
+
+                        /* ------------------ complete file md5 start ---------------------- */
+                        if (currentChunk < shardCount) {
+                            loadNext();
+                        } else {
+                            page.fileMD5 = spark.end()  // Compute hash
+                            $("#output").text( ((100/(shardCount+1)).toFixed(2)+"%"));
+                            /** ------------- 开始上传 ------------------*/
+                            var settime = setInterval(function(){
+                                if(!(_this.isopen) || _this.succeed == shardCount || _this.uploadIndex >= shardCount){
+                                    clearInterval(settime);
+                                    return;
+                                }
+                                _this._upload(file,name,size,shardCount,_this.uploadIndex);
+                                _this.uploadIndex = _this.uploadIndex + 1;
+
+                            },100);
+
+                            /** ------------- 上传结束 ------------------*/
+                        }
+                    };
+                    fileReader.onerror = function () {
+                        console.warn('oops, something went wrong.');
+                    };
+
+                    /* ------------------ complete file md5 end ---------------------- */
+
+                    function loadNext() {
+                        var start = currentChunk * page.shardSize,
+                            end = ((start + page.shardSize) >= file.size) ? file.size : start + page.shardSize;
+
+                        fileReader.readAsArrayBuffer(blobSlice.call(file, start, end));
+                    }
+
+                    loadNext();
                 }
         };
 
@@ -75,57 +110,13 @@
 		$("#file").change(function(){
 			page.isopen = false;
 			$("#output").text("等待");
-			$("#upload").text("正在分析上传数据..");
+			$("#upload").text("上传");
 			page.succeed = 0;//成功分片数
 			page.iscomplete = 0;//是否上传完成
 			page.uploadIndex = 0;//当前分片起始位置
-            page.fileMD5 = '';
-
-
-            /* ------------------ complete file md5 start ---------------------- */
-            var blobSlice = File.prototype.slice || File.prototype.mozSlice || File.prototype.webkitSlice,
-                file = this.files[0],
-                chunkSize = page.shardSize,                             // Read in chunks of 2MB
-                chunks = Math.ceil(file.size / chunkSize),
-                currentChunk = 0,
-                spark = new SparkMD5.ArrayBuffer(),
-                fileReader = new FileReader();
-
-            fileReader.onload = function (e) {
-                console.log('read chunk nr', currentChunk + 1, 'of', chunks);
-                spark.append(e.target.result);                   // Append array buffer
-                currentChunk++;
-
-                if (currentChunk < chunks) {
-                    loadNext();
-                } else {
-                    console.log('finished loading');
-                    page.fileMD5 = spark.end()  // Compute hash
-                    console.log("file hash is " +page.fileMD5)
-                    $("#upload").text("上传")
-                }
-            };
-            fileReader.onerror = function () {
-                console.warn('oops, something went wrong.');
-            };
-
-            function loadNext() {
-                var start = currentChunk * chunkSize,
-                    end = ((start + chunkSize) >= file.size) ? file.size : start + chunkSize;
-
-                fileReader.readAsArrayBuffer(blobSlice.call(file, start, end));
-            }
-
-            loadNext();
-
-            /* ------------------ complete file md5 end ---------------------- */
 		});
 
 		$("#upload").click(function(){
-		    if(page.fileMD5 == ''){
-                return
-		    }
-
 			if( !page.iscomplete ){
 				if(page.isopen){
 					page.isopen = false;
