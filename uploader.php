@@ -14,6 +14,9 @@ class uploader{
     public function upload(){
         //1.记录文件分片号,
         $totalKey = $_REQUEST["fileName"].":".$_REQUEST["totalSize"];
+        if(empty($_REQUEST["fileMD5"])){
+            exit(json_encode(["code" =>0,"分片上传失败,缺少文件md5"]));
+        }
         if($this ->redis ->get($totalKey)) {
             exit(json_encode(["code" =>1,"msg" =>"文件已经上传过"]));
         }
