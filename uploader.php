@@ -23,13 +23,14 @@ class uploader
             echo json_encode(["code" => 400, "msg" =>"分片上传失败,缺少文件md5"]);
             exit;
         }
-        if ($this->redis->get($totalKey)) {
+        if ($this->redis->hGet($totalKey,"isUploaded")) {
             echo json_encode(["code" => 200, "msg" => "文件已经上传过"]);
             exit;
         }
-        $this->redis->set($totalKey, 0);//上传状态
+
+        $this->redis->hset($totalKey, "isUploaded",0);//上传状态
         //将文件保存到临时文件夹下
-        $totalListKey = $_REQUEST["fileMD5"] . ":list:";
+        $totalListKey = $_REQUEST["fileMD5"] . "_list";
         //待清除redis 列表
         //2.判断当前分片是否已上传
         $res = $this->hasUploadedChunk($totalListKey, $_REQUEST['index']);
@@ -67,7 +68,7 @@ class uploader
             echo json_encode(["code" => 200, "msg" => "上传完成"]);
             exit;
         } else {
-            $this ->redis ->del($totalKey);
+            $this ->redis ->hDel($totalKey,"isUploaded");
             echo json_encode(["code" => 400, "msg" => "md5 不匹配，php md5：{$data["data"]}, js md5 {$_REQUEST["fileMD5"]}", "file" => $data["file"]]);
             exit;
         }
@@ -146,16 +147,10 @@ class uploader
         return ["code" => 201, "data" => md5_file($this->uploaderDir . "/" . $_REQUEST["fileName"]), "file" => $this->uploaderDir . "/" . $_REQUEST["fileName"]];
     }
 
-    private function clearRedis($totalKey, $totalList)
+    private function clearRedis($totalKey, $totalListKey)
     {
-        $this->redis->set($totalKey, 1);
-        $list = $this->redis->sMembers($totalList);
-        if ($list) {
-            foreach ($list as $v) {
-                $this->redis->del($v);
-            }
-        }
-        $this->redis->del($totalList);
+        $this->redis->hSet($totalKey, "isUploaded",1);
+        $this->redis->del($totalListKey);
     }
 }
 
