@@ -40,11 +40,11 @@
                     processData: false,  //很重要，告诉jquery不要对form进行处理
                     contentType: false,  //很重要，指定为false才能形成正确的Content-Type
                     success: function (data) {
-                        if (data.code == 1) {
+                        if (data.code == 200) {
                             _this.succeed = shardCount;
                             _this.iscomplete = 1;
                             $("#upload").text("上传完成");
-                        } else if (data.code == 200) {
+                        } else if (data.code == 201) {
                             _this.succeed = _this.succeed + 1;
                         } else if (data.code == 400) {
                             _this._upload(file, name, size, shardCount, i);
@@ -65,7 +65,6 @@
                     fileReader = new FileReader();
 
                 fileReader.onload = function (e) {
-                    console.log('read chunk nr', currentChunk + 1, 'of', shardCount);
                     spark.append(e.target.result);                   // Append array buffer
                     currentChunk++;
 
@@ -76,14 +75,10 @@
                         page.fileMD5 = spark.end()  // Compute hash
                         $("#output").text(((100 / (shardCount + 1)).toFixed(2) + "%"));
                         /** ------------- 开始上传 ------------------*/
-                        var settime = setInterval(function () {
-                            if (!(_this.isopen) || _this.succeed == shardCount || _this.uploadIndex >= shardCount) {
-                                clearInterval(settime);
-                                return;
-                            }
+                        while ((_this.isopen) && _this.succeed != shardCount && _this.uploadIndex < shardCount){
                             _this._upload(file, name, size, shardCount, _this.uploadIndex);
                             _this.uploadIndex = _this.uploadIndex + 1;
-                        }, 100);
+                        }
 
                         /** ------------- 上传结束 ------------------*/
                     }

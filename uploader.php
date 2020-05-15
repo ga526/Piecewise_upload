@@ -16,13 +16,16 @@ class uploader
     //code 1 全部上传完成   200 分片上传完成  400 分片需要重新上传
     public function upload()
     {
+        header('Content-type: application/json');
         //1.记录文件分片号,
         $totalKey = $_REQUEST["fileName"] . ":" . $_REQUEST["totalSize"];
         if (empty($_REQUEST["fileMD5"])) {
-            exit(json_encode(["code" => 0, "分片上传失败,缺少文件md5"]));
+            echo json_encode(["code" => 400, "msg" =>"分片上传失败,缺少文件md5"]);
+            exit;
         }
         if ($this->redis->get($totalKey)) {
-            exit(json_encode(["code" => 1, "msg" => "文件已经上传过"]));
+            echo json_encode(["code" => 200, "msg" => "文件已经上传过"]);
+            exit;
         }
         $this->redis->set($totalKey, 0);//上传状态
         //将文件保存到临时文件夹下
@@ -32,35 +35,41 @@ class uploader
         $res = $this->hasUploadedChunk($totalListKey, $_REQUEST['index']);
         if (!$res) {
             //data 分片号
-            exit(json_encode(["code" => 1, "msg" => "文件已经上传过"]));
+            echo json_encode(["code" => 201, "msg" => "文件已经上传过"]);
+            exit;
         }
 
         //2.判断分片是否正确(大小)
         $res = $this->checkChunk();
         if (!$res) {
             //data 分片号
-            exit(json_encode(["code" => 400, "msg" => "分片错误,需要重传", "data" => $_REQUEST["index"]]));
+            echo json_encode(["code" => 400, "msg" => "分片错误,需要重传", "data" => $_REQUEST["index"]]);
+            exit;
         }
 
         //3.存储分片
         $res = $this->saveChunk($totalListKey);
-        if ($res["code"] != 1) {
-            exit(json_encode($res));
+        if ($res["code"] != 201) {
+            echo json_encode($res);
+            exit;
         }
 
         //4.重组文件
         $data = $this->reMakeFile($totalListKey);
-        if($data["code"] != 1){
-            return json_encode($data);
+        if($data["code"] != 201){
+            echo json_encode($data);
+            exit;
         }
 
         //5.移除redis数据
         $this->clearRedis($totalKey, $totalListKey);
         if ($data["data"] == $_REQUEST["fileMD5"]) {
-            exit(json_encode(["code" => 1, "msg" => "上传完成"]));
+            echo json_encode(["code" => 200, "msg" => "上传完成"]);
+            exit;
         } else {
             $this ->redis ->del($totalKey);
-            exit(json_encode(["code" => 0, "msg" => "md5 不匹配，php md5：{$data["data"]}, js md5 {$_REQUEST["fileMD5"]}", "file" => $data["file"]]));
+            echo json_encode(["code" => 400, "msg" => "md5 不匹配，php md5：{$data["data"]}, js md5 {$_REQUEST["fileMD5"]}", "file" => $data["file"]]);
+            exit;
         }
     }
 
@@ -103,7 +112,7 @@ class uploader
         ];
         $this->redis->sadd($totalListKey, $_REQUEST["index"]);
         return [
-            "code" => 1
+            "code" => 201
         ];
     }
 
@@ -112,12 +121,12 @@ class uploader
     {
         $len = $this->redis->scard($totalListKey);
         if ($len != $_REQUEST["totalChunk"]) {
-            return ["code" => 200, "msg" => "index " . $_REQUEST["index"] . " len $len, totalChunk {$_REQUEST["totalChunk"]} 分片上传完成"];
+            return ["code" => 400, "msg" => "index " . $_REQUEST["index"] . " len $len, totalChunk {$_REQUEST["totalChunk"]} 分片上传完成"];
         }
         try {
             $source = fopen($this->uploaderDir . "/" . $_REQUEST["fileName"], "w+b");
             if (!flock($source, LOCK_EX)) {
-                return ["code" => 0, "msg" => "上传文件被占用 !"];
+                return ["code" => 400, "msg" => "上传文件被占用 !"];
             }
 
             for ($i = 0; $i < $len; $i++) {
@@ -134,7 +143,7 @@ class uploader
         } catch (Exception $e) {
             exit($e->getMessage());
         }
-        return ["code" => 1, "data" => md5_file($this->uploaderDir . "/" . $_REQUEST["fileName"]), "file" => $this->uploaderDir . "/" . $_REQUEST["fileName"]];
+        return ["code" => 201, "data" => md5_file($this->uploaderDir . "/" . $_REQUEST["fileName"]), "file" => $this->uploaderDir . "/" . $_REQUEST["fileName"]];
     }
 
     private function clearRedis($totalKey, $totalList)
